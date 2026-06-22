@@ -1,53 +1,61 @@
-<h1 align="center">Directional Scalper Multi Exchange</h1>
-<p align="center">
-An algorithmic trading framework built using CCXT for multiple exchanges<br>
-</p>
-<p align="center">
-<img alt="GitHub Pipenv locked Python version" src="https://img.shields.io/github/pipenv/locked/python-version/donewiththedollar/directionalscalper"> 
-<a href="https://github.com/donewiththedollar/directionalscalper/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg"></a>
-<a href="https://github.com/psf/black"><img alt="Code style: black" src="https://img.shields.io/badge/code%20style-black-000000.svg"></a>
-</p>
+# Directional Scalper / Vortex
 
-![Visitor Count](https://komarev.com/ghpvc/?username=donewiththedollar)
+Anchored-grid DCA trading bot using the Vortex strategy. Supports perpetual futures on Bybit, BloFin, and Aster (V1 HMAC and V3 API-wallet signing).
 
-![GitHub Stats](https://github-readme-stats.vercel.app/api?username=donewiththedollar&show_icons=true&theme=radical)
+## Overview
 
-## Directional Scalper documentation
-[Documentation](https://donewiththedollar.github.io/directionalscalper/)
+The Vortex strategy places a DCA grid of limit orders on both sides of the market. Grid spacing adapts dynamically to volatility and orderbook conditions. Core strategy modules (calculator, wave_queue, orderbook_levels, scalper_entry, regime_detector, virtual_chunking_calculator) ship as precompiled `.so` extensions and are not included as Python source.
 
-### Links
-* Website: https://quantumvoid.org
-* API (BYBIT): https://api.quantumvoid.org/data/quantdatav2_bybit.json
-* Discord: https://discord.gg/4GvHqPxfud
+## Supported Exchanges
 
-Directional Scalper        |  API Scraper               |  Dashboard                | Directional Scalper Multi | Menu GUI
-:-------------------------:|:-------------------------:|:-------------------------:|:-------------------------:|:-------------------------:
-![](https://github.com/donewiththedollar/directional-scalper/blob/main/directional-scalper.gif)  |  ![](https://github.com/donewiththedollar/directional-scalper/blob/main/scraper.gif)  |  ![](https://github.com/donewiththedollar/directional-scalper/blob/main/dashboardimg.gif)  |  ![](https://github.com/donewiththedollar/directionalscalper/blob/main/directionalscalpermulti.gif)  |  ![](https://github.com/donewiththedollar/directional-scalper/blob/main/menugui.gif)
+| Exchange | Config key | Notes |
+|----------|-----------|-------|
+| Bybit | `bybit` | WebSocket order support |
+| BloFin | `blofin` | Requires `password` (passphrase) |
+| Aster V1 | `aster` | HMAC key, legacy endpoint |
+| Aster V3 | `aster_v3` | API wallet + EIP-712 signing; requires `eth-account` |
 
+## Requirements
 
-### Docker
-To run the bot inside docker container use the following command:
-> docker-compose run directional-scalper python3.11 bot.py --symbol SUIUSDT --strategy bybit_hedge_mfirsi_maker --config config_main.json
+- Requires Python 3.11 (linux-x86_64) — the strategy modules ship as precompiled CPython-3.11 `.so`; other versions must rebuild via `build_strategy.sh`.
+- Redis (used by strategy for state persistence)
+- See `requirements.txt` for Python dependencies
 
-### Proxy
-If you need to use a proxy to access the Exchange API, you can set the environment variables as shown in the following example:
 ```bash
-$ export HTTP_PROXY="http://10.10.1.10:3128"  # these proxies won't work for you, they are here for example
-$ export HTTPS_PROXY="http://10.10.1.10:1080"
+pip install -r requirements.txt
 ```
 
-### Setting up Telegram alerts (not used currently)
-1. Get token from botfather after creating new bot, send a message to your new bot
-2. Go to https://api.telegram.org/bot<bot_token>/getUpdates
-3. Replacing <bot_token> with your token from the botfather after creating new bot
-4. Look for chat id and copy the chat id into config.json
+## Configuration
 
-### Developer instructions
-- Install developer requirements from pipenv `pipenv install --dev` (to keep requirements in a virtual environment)
-- Install pre-commit hooks `pre-commit install` (if you intend to commit code to the repo)
-- Run pytest `pytest -vv` (if you have written any tests to make sure the code works as expected)
+Copy a template config and fill in your credentials:
 
+```bash
+# Bybit example
+cp configs/bybit/vortex/config_vortex_grid_stoploss.json configs/bybit/vortex/config_vortex_grid_stoploss.local.json
+# Edit the .local.json: set api_key, api_secret, symbols, wallet_exposure, etc.
+```
 
-### To do:
-* A lot of top secret cutting edge stuff
-* Huobi, Binance, Phemex, MEXC base. (MEXC Futs API down until Q4)
+Available templates:
+
+- `configs/bybit/vortex/config_vortex_grid_stoploss.json` - Grid + hard stop-loss
+- `configs/bybit/vortex/config_vortex_grid_stoploss_sticky.json` - Sticky DCA variant
+- `configs/bybit/vortex/config_vortex_waves_anchored.example.json` - Wave-queue anchor-stable grid
+- `configs/bybit/vortex/config_vortex_waves_never_stuck.example.json` - Auto-max-waves rescue ladder
+- `configs/bybit/vortex/config_vortex_grid_stoploss_sticky_wavequeue_full.example.json` - Full wave-queue sticky
+- `configs/bybit/vortex/config_vortex_walltrap_sticky.example.json` - Wall-trap sticky variant
+- `configs/blofin/vortex/` - Equivalent set for BloFin
+- `configs/asterdex/vortex/config_vortex_waves_anchored.example.json` - Aster V3 anchor-stable grid
+
+**Never commit `*.local.json` files** - they contain real API keys.
+
+## Running
+
+```bash
+python runners/vortex_bot.py --config configs/bybit/vortex/config_vortex_grid_stoploss.local.json
+```
+
+The bot logs to `logs/vortex_<SYMBOL>.log` (rotating, 10 MB, 3 backups) and to stdout.
+
+## Edge Modules
+
+The compiled `.so` files for the core strategy logic must be present in `strategies/vortex/` before running. Obtain them from the build pipeline (compiled from Cython/C extensions targeting this platform).

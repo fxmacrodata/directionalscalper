@@ -1,0 +1,146 @@
+{
+  "_comment": "VORTEX GRID + STOP LOSS + STICKY DCA — BloFin variant of the Bybit sticky config.",
+  "_note": "Persistent DCA plan + live dynamic prices + adaptive sizing + extension. BloFin fees: maker 2bps, taker 6bps. round_min_qty_blofin enabled (BloFin requires it).",
+
+  "strategy": "vortex_dca",
+  "exchange": {
+    "name": "blofin",
+    "api_key": "YOUR_API_KEY",
+    "api_secret": "YOUR_API_SECRET",
+    "password": "YOUR_PASSWORD",
+    "broker_id": "cc84bbde7d4b8a8c",
+    "websocket_orders": true,
+    "websocket_data": true,
+    "testnet": false
+  },
+
+  "vortex_dca": {
+    "_comment_grid": "Grid: 4 levels, geometric spacing (ratio_power).",
+    "_math": "wallet_exposure caps total position notional (e.g. 15 = $15 on a $100 wallet).",
+    "nr_clusters": 4,
+    "outer_distance": 0.032,
+    "ratio_power": 0.7,
+    "wallet_exposure": 15.0,
+    "first_level_distance": 0.0008,
+
+    "_comment_sizing": "Geometric position sizing (ratio_power).",
+    "sizing_mode": "geometric",
+
+    "_comment_dynamic": "=== DYNAMIC SPACING ===",
+    "dynamic_spacing": {
+      "enabled": true,
+      "min_outer_distance": 0.032,
+      "max_outer_distance": 0.042,
+      "vol_percentile_low": 10,
+      "vol_percentile_high": 90,
+      "volatility_source": "hybrid",
+      "price_vol_interval": "1m",
+      "price_vol_lookback": 15,
+      "price_vol_curve": [
+        [0, 5],
+        [10, 15],
+        [20, 30],
+        [40, 50],
+        [70, 70],
+        [100, 85],
+        [150, 95],
+        [250, 99]
+      ]
+    },
+
+    "_comment_reactive": "=== REACTIVE SPACING ===",
+    "reactive_spacing": {
+      "enabled": true,
+      "max_multiplier": 1.8,
+      "depth_analysis": {
+        "enabled": true,
+        "history_size": 10,
+        "drop_threshold_pct": 20,
+        "severe_drop_pct": 40,
+        "drop_multiplier": 1.2,
+        "severe_multiplier": 1.5
+      },
+      "spread_dynamics": {
+        "enabled": true,
+        "history_size": 50,
+        "z_score_threshold": 2.0,
+        "z_score_severe": 4.0,
+        "base_multiplier": 1.2,
+        "severe_multiplier": 1.6
+      },
+      "imbalance_analysis": {
+        "enabled": true,
+        "depth_levels": 10,
+        "threshold": 0.70,
+        "severe_threshold": 0.85,
+        "base_multiplier": 1.1,
+        "severe_multiplier": 1.3
+      }
+    },
+
+    "_comment_tp": "=== TAKE PROFIT: 0.2% (BloFin maker 2bps + taker 6bps = wider than bybit) ===",
+    "minimum_tp": 0.002,
+
+    "_comment_stoploss": "=== MAX DRAWDOWN STOP LOSS ===",
+    "max_drawdown_usdt": 90,
+    "stop_cooldown_seconds": 300,
+
+    "_comment_position": "=== PERSISTENT PLAN + LIVE PRICES + ADAPTIVE SIZING + EXTENSION ===",
+    "_persistent_plan_math": "persistent_grid_plan stores the grid at entry and resets on TP/stop-loss; dynamic_spacing keeps prices live; adaptive_dca_sizing recomputes quantities per level; extend_grid_when_exhausted adds deeper levels when the plan is exhausted, the position is open, and budget remains.",
+    "persistent_grid_plan": true,
+    "adaptive_dca_sizing": true,
+    "adaptive_distance": 0.005,
+    "adaptive_budget_cap": true,
+    "adaptive_per_level_cap_multiplier": 1.5,
+    "plan_drift_reset_threshold": 0.08,
+    "initial_grid_pct": 0.7,
+    "extend_grid_when_exhausted": true,
+    "extension_max_levels": 4,
+    "extension_distance": 0.01,
+    "partial_close_reset_threshold": 0.5,
+    "allow_add_smaller": false,
+    "min_distance": 0.001,
+    "qty_multiplier": 1.3,
+    "desired_distance": 0.005,
+    "no_entry_above": null,
+    "no_entry_below": null,
+
+    "_comment_refresh": "=== GRID REFRESH ===",
+    "refresh_threshold": 0.01,
+    "grid_refresh_interval": 90,
+
+    "_comment_mode": "=== BOTH SIDES ===",
+    "long_mode": true,
+    "short_mode": true,
+    "vortex_always_both_sides": true,
+
+    "_comment_safety": "=== SAFETY ===",
+    "liquidation_safeguard": true,
+    "liquidation_safeguard_pct_dist": 5.0,
+    "startup_cleanup_all_symbols": true,
+    "flashcrash_protection": false,
+
+    "_comment_disabled": "=== DISABLED: Auto-hedge, virtual chunking, helpers ===",
+    "vortex_autohedge_enabled": false,
+    "virtual_chunking_enabled": false,
+    "helper_enabled": false,
+
+    "_comment_clustering": "=== CLUSTERING ===",
+    "clustering_enabled": true,
+    "clustering_algo": "LINEAR",
+    "clustering_period": "1H",
+    "clustering_timeframe": "1m",
+
+    "_comment_misc": "=== MISCELLANEOUS (BloFin-specific: round_min_qty enabled) ===",
+    "round_min_qty_blofin": true,
+    "tp_blacklist": []
+  },
+
+  "symbols": [
+    "ASTERUSDT"
+  ],
+  "max_symbols": 1,
+  "logging": {
+    "level": "INFO"
+  }
+}

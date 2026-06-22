@@ -1,0 +1,278 @@
+{
+  "_comment": "Vortex full-system example (BloFin): wave-queue, gridspan-normalized sizing, gridspan-drift auto-reset, and dynamic spacing. Copy to .local.json, fill in credentials, restart the bot.",
+  "_note": "BloFin variant. BloFin fees: maker 2bps, taker 6bps (minimum_tp tuned to 0.2% to cover fees). round_min_qty_blofin enabled (BloFin API requires explicit min-qty rounding).",
+  "strategy": "vortex_dca",
+  "exchange": {
+    "name": "blofin",
+    "api_key": "API_KEY_HERE",
+    "api_secret": "API_SECRET_HERE",
+    "password": "API_PASSWORD_HERE",
+    "broker_id": "cc84bbde7d4b8a8c",
+    "websocket_orders": true,
+    "websocket_data": true,
+    "testnet": false
+  },
+  "vortex_dca": {
+    "_comment_grid": "Grid: 4 levels, geometric spacing (ratio_power).",
+    "_math": "wallet_exposure caps total position notional (e.g. 70 = $70 on a $100 wallet).",
+    "nr_clusters": 4,
+    "outer_distance": 0.042,
+    "ratio_power": 0.75,
+    "wallet_exposure": 70.0,
+    "first_level_distance": 0.0008,
+    "_comment_grid_mode": "=== ORDERBOOK-ANCHORED GRID === Levels are placed at real bid/ask walls instead of fixed-pct spacings. Falls back to LINEAR if the book is too thin to bin nr_clusters walls in band.",
+    "grid_mode": "orderbook",
+    "orderbook_grid": {
+      "min_distance_pct": 0.001,
+      "max_distance_pct": 0.042,
+      "nr_bins": 50
+    },
+    "_comment_sizing": "Geometric position sizing (ratio_power).",
+    "sizing_mode": "geometric",
+    "_comment_gridspan_sizing": "=== GRIDSPAN-NORMALIZED SIZING WITH AUTO-DRIFT RESET === Quantities scale with live outer_distance / reference_outer_distance, clamped between min_scale and max_scale. sizing_drift_reset rebuilds the stored plan when stored notional cost vs current target diverges past the threshold.",
+    "_comment_gridspan_scale_cap": "scale_cap=false: quantities still scale with volatility while the cap stays at the wallet_exposure-derived ceiling, so existing positions don't retroactively appear over-cap when volatility calms. Set to true to scale both paths.",
+    "gridspan_normalized_sizing": {
+      "enabled": true,
+      "reference_outer_distance": 0.05,
+      "min_scale": 0.2,
+      "max_scale": 1.0,
+      "scale_cap": false,
+      "sizing_drift_reset_enabled": true,
+      "sizing_drift_reset_threshold": 0.2
+    },
+    "_comment_wave_queue": "=== WAVE-QUEUE LAZY MULTI-WAVE ACTIVATION === When the first wave's grid is exhausted, the wave-queue lazily activates the next wave at current_price + current outer_distance with fresh scaled quantities. max_waves bounds the number of waves; wave_share allocates budget across waves (sums to 1.0); max_total_exposure_pct sets the hard cap relative to the soft cap. Subsumes the legacy extend_grid_when_exhausted and deep_rescue_extension paths when enabled.",
+    "wave_queue": {
+      "enabled": true,
+      "max_waves": 2,
+      "wave_share": [
+        0.6,
+        0.4
+      ],
+      "max_total_exposure_pct": 1.2,
+      "gridspan_progression": "pinned_current",
+      "wave_generation": "lazy",
+      "min_wave_notional_usd": 5.0
+    },
+    "_comment_dynamic": "=== DYNAMIC SPACING === Live outer_distance scales with vol_pctl (hybrid source: max of spread/price_range/atrp/tick_vol). Clamped to [min_outer_distance, max_outer_distance]. Floor 0.012 (1.2%) allows grid to compress in calm BloFin markets.",
+    "dynamic_spacing": {
+      "enabled": true,
+      "min_outer_distance": 0.012,
+      "max_outer_distance": 0.06,
+      "vol_percentile_low": 10,
+      "vol_percentile_high": 90,
+      "volatility_source": "hybrid",
+      "price_vol_interval": "1m",
+      "price_vol_lookback": 15,
+      "price_vol_curve": [
+        [
+          0,
+          5
+        ],
+        [
+          10,
+          15
+        ],
+        [
+          20,
+          30
+        ],
+        [
+          40,
+          50
+        ],
+        [
+          70,
+          70
+        ],
+        [
+          100,
+          85
+        ],
+        [
+          150,
+          95
+        ],
+        [
+          250,
+          99
+        ]
+      ],
+      "tick_vol_mode": "ewma",
+      "ewma_lambda": 0.9
+    },
+    "_comment_reactive": "=== REACTIVE SPACING === Stack-multiplier on top of dynamic outer_distance when book conditions deteriorate. Up to 1.8x widening on depth drops, spread spikes, or imbalance.",
+    "reactive_spacing": {
+      "enabled": true,
+      "max_multiplier": 1.8,
+      "depth_analysis": {
+        "enabled": true,
+        "history_size": 10,
+        "drop_threshold_pct": 20,
+        "severe_drop_pct": 40,
+        "drop_multiplier": 1.2,
+        "severe_multiplier": 1.5
+      },
+      "spread_dynamics": {
+        "enabled": true,
+        "history_size": 50,
+        "z_score_threshold": 2.0,
+        "z_score_severe": 4.0,
+        "base_multiplier": 1.2,
+        "severe_multiplier": 1.6
+      },
+      "imbalance_analysis": {
+        "enabled": true,
+        "depth_levels": 10,
+        "threshold": 0.7,
+        "severe_threshold": 0.85,
+        "base_multiplier": 1.1,
+        "severe_multiplier": 1.3
+      }
+    },
+    "_comment_tp": "=== TAKE PROFIT: 0.2% (BloFin maker 2bps + taker 6bps = wider than bybit's 0.18% target) ===",
+    "minimum_tp": 0.002,
+    "_comment_stoploss": "=== MAX DRAWDOWN STOP LOSS — final backstop independent of wave-queue cap math ===",
+    "max_drawdown_usdt": 90,
+    "stop_cooldown_seconds": 300,
+    "_comment_position": "=== PERSISTENT PLAN === Plan stickiness with auto-drift-reset. Legacy extension paths (extend_grid_when_exhausted, deep_rescue_extension) are explicitly DISABLED because wave_queue.enabled=true takes precedence — disabling here avoids the coexistence boot warning.",
+    "persistent_grid_plan": true,
+    "adaptive_dca_sizing": false,
+    "initial_grid_pct": 0.7,
+    "plan_drift_reset_threshold": 0.08,
+    "plan_underutil_reset_enabled": true,
+    "plan_underutil_cost_ceiling": 0.5,
+    "plan_underutil_min_remaining_pct": 0.5,
+    "plan_length_auto_reset": true,
+    "extend_grid_when_exhausted": false,
+    "extension_max_levels": 4,
+    "extension_distance": 0.02,
+    "partial_close_reset_threshold": 0.5,
+    "min_order_notional_usd": 5.0,
+    "allow_add_smaller": false,
+    "min_distance": 0.001,
+    "qty_multiplier": 1.3,
+    "no_entry_above": null,
+    "no_entry_below": null,
+    "_comment_deep_rescue_disabled": "deep_rescue_extension disabled — its job is now done by the final wave in wave_queue.",
+    "deep_rescue_extension": {
+      "enabled": false,
+      "hard_cap_soft_multiplier": 2.5,
+      "budget_fraction": 0.5,
+      "max_levels": 4,
+      "min_distance_pct": 0.005,
+      "max_distance_pct": 0.06,
+      "nr_bins": 50
+    },
+    "_comment_refresh": "=== GRID REFRESH ===",
+    "refresh_threshold": 0.035,
+    "grid_refresh_interval": 90,
+    "_comment_lock": "Direction lock: refresh_lock_lower / refresh_lock_higher control whether the grid refreshes as price moves against the position.",
+    "refresh_lock_lower": true,
+    "refresh_lock_higher": true,
+    "_comment_mode": "=== BOTH SIDES ===",
+    "long_mode": true,
+    "short_mode": true,
+    "vortex_always_both_sides": true,
+    "_comment_safety": "=== SAFETY ===",
+    "liquidation_safeguard": true,
+    "liquidation_safeguard_pct_dist": 5.0,
+    "startup_cleanup_all_symbols": true,
+    "flashcrash_protection": false,
+    "_comment_disabled": "=== DISABLED: Auto-hedge, virtual chunking, helpers ===",
+    "vortex_autohedge_enabled": false,
+    "virtual_chunking_enabled": false,
+    "helper_enabled": false,
+    "_comment_clustering": "=== CLUSTERING ===",
+    "clustering_enabled": true,
+    "clustering_algo": "LINEAR",
+    "clustering_period": "1H",
+    "clustering_timeframe": "1m",
+    "_comment_misc": "=== MISCELLANEOUS (BloFin-specific: round_min_qty enabled — BloFin API requires explicit qty rounding to symbol lot step) ===",
+    "round_min_qty_blofin": true,
+    "tp_blacklist": [],
+    "_comment_entry_filter": "=== ENTRY FILTER === When flat on a side, soft-block fresh grid placement if price is on the wrong side of a recent candle (long blocks if price <= recent low; short blocks if price >= recent high). Spike block skips both sides on wide-range candles. Applies ONLY to fresh-entry grid placement.",
+    "entry_filter": {
+      "enabled": true,
+      "period": "4H",
+      "candle_filter": {
+        "enabled": true,
+        "timeframe": "5m"
+      },
+      "spike_block": {
+        "enabled": true,
+        "timeframe": "5m",
+        "max_range_pct": 0.012
+      }
+    },
+    "scalper_initial_entry": {
+      "enabled": false,
+      "price_selection": "STRONGEST",
+      "band": {
+        "min_distance_pct": 0.0005,
+        "max_distance_pct": 0.0015
+      },
+      "depth": {
+        "rolling_window": 60,
+        "ratio": 1.5,
+        "minimum_distance": 0.005
+      },
+      "nr_bins_depth_ratio": 0.5,
+      "candle_filter": {
+        "enabled": true
+      },
+      "spike_block": {
+        "enabled": true,
+        "max_range_pct": 0.005
+      },
+      "max_simultaneous_positions": 1
+    },
+    "_comment_staged": "=== STAGED INITIAL ENTRY === When flat, place ONLY level 1 of the normal grid (smallest geometric qty, closest to mid). Level 1 PRICE anchored at strongest orderbook wall within band. Plan retains all N levels. After L1 fills -> rebalanced grid places L2..N.",
+    "staged_initial_entry": {
+      "enabled": true,
+      "use_orderbook_wall": true,
+      "price_selection": "STRONGEST",
+      "band": {
+        "min_distance_pct": 0.0005,
+        "max_distance_pct": 0.0015
+      },
+      "spike_block": {
+        "enabled": false,
+        "timeframe": "5m",
+        "period": "4H",
+        "max_range_pct": 0.012
+      },
+      "candle_filter": {
+        "enabled": true,
+        "timeframe": "5m",
+        "period": "4H"
+      },
+      "retry_interval_secs": 30,
+      "wall_change_threshold_bps": 2,
+      "wick_catcher": {
+        "enabled": true,
+        "timeframe": "1m",
+        "period": "4H",
+        "min_wick_to_body_ratio": 2.0,
+        "min_wick_pct": 0.003,
+        "override": [
+          "spike_block",
+          "candle_filter"
+        ],
+        "tick_mode": {
+          "enabled": true,
+          "window_secs": 30,
+          "min_wick_to_body_ratio": 1.5,
+          "min_wick_pct": 0.0015
+        }
+      },
+      "chase_after_secs": 60
+    }
+  },
+  "symbols": [
+    "ASTERUSDT"
+  ],
+  "max_symbols": 1,
+  "logging": {
+    "level": "INFO"
+  }
+}
